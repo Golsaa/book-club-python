@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Book Club{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Book Club home"><span class="brand-mark">B</span> Between the Covers</a>
+    <nav aria-label="Main navigation">
+      <a href="/#recommendations">Recommendations</a>
+      {% if member %}<a href="/history">My history</a>{% endif %}
+      {% if member %}
+      <form action="/auth/logout" method="post" class="nav-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="nav-button" type="submit">Sign out</button>
+      </form>
+      {% else %}<a class="nav-signin" href="/auth/login">Sign in with Google</a>{% endif %}
+    </nav>
+  </header>
+  <main>
+    {% if flash %}<div class="notice" role="status">{{ flash }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer>One good book can start a great conversation.</footer>
+</body>
+</html>

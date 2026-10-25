@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Your book history — Book Club{% endblock %}
+{% block content %}
+<section class="section history-page">
+  <span class="eyebrow">THE STORY SO FAR</span><h1>Your book history</h1>
+  <p>Archived recommendations and votes are preserved here. They are not part of current results.</p>
+  <h2>Past recommendations</h2>
+  {% for recommendation, total in archived %}
+  <article class="history-card"><div><span class="genre-pill">{{ recommendation.genre }}</span><h3>{{ recommendation.title }}</h3><p>by {{ recommendation.author }}</p><p>{{ recommendation.description }}</p></div><span class="history-count">{{ total }} historical votes</span></article>
+  {% else %}<p class="muted">No recommendations have been archived yet.</p>{% endfor %}
+  <h2 class="history-subhead">Your past votes</h2>
+  {% for vote, recommendation in past_votes %}<p class="past-vote">{{ vote.cast_at.strftime('%Y-%m-%d %H:%M UTC') }} — {{ recommendation.title }} by {{ recommendation.author }}{% if recommendation.archived_at %} <span class="muted">(archived)</span>{% endif %}</p>
+  {% else %}<p class="muted">No past votes yet.</p>{% endfor %}
+</section>
+{% endblock %}

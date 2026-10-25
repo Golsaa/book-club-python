@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Complete your membership — Book Club{% endblock %}
+{% block content %}
+<section class="section registration-page">
+  <span class="eyebrow">ONE LAST STEP</span><h1>Welcome to the club.</h1>
+  <p>Signed in as <strong>{{ pending.email }}</strong>. Add a couple of details to complete your membership.</p>
+  {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+  <form action="/register" method="post" class="recommend-form single-column">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Your name<input name="name" maxlength="120" required value="{{ pending.name }}" autocomplete="name"></label>
+    <label>Favorite genre<select name="favorite_genre" required><option value="">Choose a genre</option>{% for genre in genres %}<option value="{{ genre }}">{{ genre }}</option>{% endfor %}</select></label>
+    <button class="button" type="submit">Complete registration <span aria-hidden="true">→</span></button>
+  </form>
+</section>
+{% endblock %}

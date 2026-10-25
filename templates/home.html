@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Book Club — Find our next read{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <span class="eyebrow">READ TOGETHER · TALK FOREVER</span>
+    <h1>Find our next<br><em>great read.</em></h1>
+    <p>A cozy corner for the books we love and the stories we share. Recommend a favorite, cast your vote, and help pick the club’s next chapter.</p>
+    {% if member %}<p class="welcome">Welcome back, {{ member.name }}.</p>
+    {% else %}<a class="button button-light" href="/auth/login">Join the conversation <span aria-hidden="true">→</span></a>{% endif %}
+  </div>
+  <div class="hero-art" aria-hidden="true"><div class="sun"></div><div class="book-stack"><i></i><i></i><i></i><i></i></div><div class="plant">✳</div></div>
+</section>
+
+<section class="section recommendations" id="recommendations">
+  <div class="section-heading">
+    <div><span class="eyebrow">THE CLUB’S SHORTLIST</span><h2>On the reading table</h2></div>
+    <span class="live-label"><i></i> Updates every 10 seconds</span>
+  </div>
+  {% if vote_window %}
+    <div class="voting-status open"><strong>Voting is open</strong><span>Closes {{ vote_window[1].strftime('%b %d, %Y at %H:%M UTC') }}</span></div>
+  {% else %}
+    <div class="voting-status"><strong>Voting has not opened yet</strong><span>First round begins November 1, 2026 at 00:00 UTC.</span></div>
+  {% endif %}
+
+    <div id="results" class="book-list" aria-live="polite"
+      data-authenticated="{{ 'true' if member else 'false' }}"
+      data-csrf-token="{{ csrf_token if member else '' }}"
+      data-can-vote="{{ 'true' if member and vote_window else 'false' }}"
+      data-current-vote-id="{{ current_vote.recommendation_id if current_vote else '' }}">
+    {% for entry in entries %}{% set book = entry.recommendation %}
+    <article class="book-card" data-book-id="{{ book.id }}">
+      <div class="rank">{{ "%02d"|format(loop.index) }}</div>
+      <div class="book-copy"><div class="book-meta"><span class="genre-pill">{{ book.genre }}</span>{% if own_recommendation and book.id == own_recommendation.id %}<span class="yours">Your pick</span>{% endif %}</div>
+        <h3>{{ book.title }}</h3><p class="author">by {{ book.author }}</p><p class="description">{{ book.description }}</p>
+      </div>
+      <div class="book-actions"><div class="vote-count"><strong class="count">{{ entry.vote_count }}</strong><span>votes</span></div>
+        {% if member and vote_window %}
+        <form action="/votes/{{ book.id }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="vote-button {% if current_vote and current_vote.recommendation_id == book.id %}selected{% endif %}" type="submit">{% if current_vote and current_vote.recommendation_id == book.id %}Your vote{% else %}Vote for this{% endif %}</button></form>
+        {% endif %}
+      </div>
+    </article>
+    {% else %}<div class="empty-state"><span>✧</span><h3>No recommendations just yet</h3><p>Be the first to put a book on the table.</p></div>{% endfor %}
+  </div>
+</section>
+
+{% if member %}
+<section class="section recommend-panel">
+  <div class="panel-intro"><span class="eyebrow">SHARE A STORY</span><h2>{% if own_recommendation %}Replace your recommendation{% else %}Recommend a book{% endif %}</h2><p>Your latest pick becomes your current recommendation. Earlier picks and their votes are kept in your history.</p></div>
+  <form action="/recommendations" method="post" class="recommend-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Book title<input name="title" maxlength="200" required value="{{ own_recommendation.title if own_recommendation else '' }}"></label>
+    <label>Author<input name="author" maxlength="160" required value="{{ own_recommendation.author if own_recommendation else '' }}"></label>
+    <label>Genre<select name="genre" required><option value="">Choose a genre</option>{% for genre in genres %}<option value="{{ genre }}" {% if own_recommendation and own_recommendation.genre == genre %}selected{% endif %}>{{ genre }}</option>{% endfor %}</select></label>
+    <label class="wide">Why should we read it?<textarea name="description" rows="4" maxlength="2000" required>{{ own_recommendation.description if own_recommendation else '' }}</textarea></label>
+    <button class="button" type="submit">Save recommendation <span aria-hidden="true">→</span></button>
+  </form>
+</section>
+{% endif %}
+
+<script>
+  async function refreshResults() {
+    try {
+      const response = await fetch('/api/results', {headers: {'Accept': 'application/json'}});
+      if (!response.ok) return;
+      const books = await response.json();
+      const container = document.getElementById('results');
+      if (!container) return;
+      if (!books.length) {
+        container.innerHTML = '<div class="empty-state"><span>✧</span><h3>No recommendations just yet</h3><p>Be the first to put a book on the table.</p></div>';
+        return;
+      }
+      container.querySelector('.empty-state')?.remove();
+      const oldCards = new Map([...container.querySelectorAll('[data-book-id]')].map(card => [Number(card.dataset.bookId), card]));
+      books.forEach((book, index) => {
+        let card = oldCards.get(book.id);
+        if (!card) {
+          card = document.createElement('article');
+          card.className = 'book-card';
+          card.dataset.bookId = String(book.id);
+
+          const rank = document.createElement('div');
+          rank.className = 'rank';
+          card.appendChild(rank);
+
+          const copy = document.createElement('div');
+          copy.className = 'book-copy';
+          const meta = document.createElement('div');
+          meta.className = 'book-meta';
+          const genre = document.createElement('span');
+          genre.className = 'genre-pill';
+          genre.textContent = book.genre;
+          meta.appendChild(genre);
+          copy.appendChild(meta);
+
+          for (const [tag, className, value] of [
+            ['h3', '', book.title],
+            ['p', 'author', `by ${book.author}`],
+            ['p', 'description', book.description],
+          ]) {
+            const element = document.createElement(tag);
+            if (className) element.className = className;
+            element.textContent = value;
+            copy.appendChild(element);
+          }
+          card.appendChild(copy);
+
+          const actions = document.createElement('div');
+          actions.className = 'book-actions';
+          const voteCount = document.createElement('div');
+          voteCount.className = 'vote-count';
+          const count = document.createElement('strong');
+          count.className = 'count';
+          const countLabel = document.createElement('span');
+          countLabel.textContent = 'votes';
+          voteCount.append(count, countLabel);
+          actions.appendChild(voteCount);
+
+          if (container.dataset.authenticated === 'true' && container.dataset.canVote === 'true') {
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = `/votes/${encodeURIComponent(book.id)}`;
+            const csrf = document.createElement('input');
+            csrf.type = 'hidden';
+            csrf.name = 'csrf_token';
+            csrf.value = container.dataset.csrfToken || '';
+            const button = document.createElement('button');
+            button.type = 'submit';
+            button.className = 'vote-button';
+            const hasVote = container.dataset.currentVoteId !== '';
+            const isCurrentVote = Number(container.dataset.currentVoteId) === book.id;
+            button.textContent = isCurrentVote ? 'Your vote' : (hasVote ? 'Change vote to this' : 'Vote for this');
+            if (isCurrentVote) button.classList.add('selected');
+            form.append(csrf, button);
+            actions.appendChild(form);
+          }
+          card.append(actions);
+        }
+        const count = card.querySelector('.count');
+        if (count) count.textContent = String(book.vote_count);
+        const rank = card.querySelector('.rank');
+        if (rank) rank.textContent = String(index + 1).padStart(2, '0');
+        const existingCount = card.querySelector('.vote-count .count');
+        if (existingCount) existingCount.textContent = String(book.vote_count);
+        const cardForm = card.querySelector('.book-actions form');
+        if (cardForm) {
+          const button = cardForm.querySelector('button');
+          const isCurrentVote = Number(container.dataset.currentVoteId) === book.id;
+          if (button) {
+            button.textContent = isCurrentVote ? 'Your vote' : (container.dataset.currentVoteId ? 'Change vote to this' : 'Vote for this');
+            button.classList.toggle('selected', isCurrentVote);
+          }
+        }
+        container.appendChild(card);
+        oldCards.delete(book.id);
+      });
+      oldCards.forEach(card => card.remove());
+    } catch (_) { /* Keep showing the last successful results during a temporary network error. */ }
+  }
+  window.setInterval(refreshResults, 10000);
+</script>
+{% endblock %}
