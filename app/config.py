@@ -36,7 +36,7 @@ class Settings:
     @classmethod
     def from_environment(cls) -> "Settings":
         first_start = datetime.fromisoformat(
-            os.getenv("VOTING_FIRST_START", "2026-11-01T00:00:00+00:00")
+            os.getenv("VOTING_FIRST_START", "2026-10-25T00:00:00+00:00")
         )
         if first_start.tzinfo is None:
             first_start = first_start.replace(tzinfo=timezone.utc)
@@ -57,7 +57,7 @@ class Settings:
             smtp_from=os.getenv("SMTP_FROM", ""),
             smtp_use_tls=_as_bool(os.getenv("SMTP_USE_TLS", "true"), True),
             voting_first_start=first_start,
-            voting_period_days=max(1, int(os.getenv("VOTING_PERIOD_DAYS", "14"))),
+            voting_period_days=max(1, int(os.getenv("VOTING_PERIOD_DAYS", "2"))),
         )
 
 

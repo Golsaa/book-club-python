@@ -9,7 +9,7 @@ A beginner-friendly, server-rendered book club app built with FastAPI, Jinja, SQ
 - Each member has one current recommendation. Replacing it archives the previous recommendation and its votes.
 - Archived recommendations and votes remain in the member's history and do not count in current totals.
 - Members may vote for their own recommendation, have only one active vote, and can change it during an open voting period.
-- Voting opens every 14 days at 00:00 UTC, anchored at November 1, 2026. Each period lasts 14 days.
+- Voting opens every 2 days at 00:00 UTC, anchored at October 25, 2026. Each period lasts 2 days.
 - Results are ordered by active vote total and refreshed in the open page every 10 seconds.
 - Registration, recommendation, and vote actions send confirmations over SMTP. A delivery failure does not undo the action and is recorded in the database.
 
