@@ -16,8 +16,17 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import AppSettings, EmailFailure, Genre, Member, Recommendation, Vote
-from .services import archive_recommendation, get_app_settings, get_genres, list_recommendations_with_votes, send_confirmation, voting_window
+from .models import EmailFailure, Genre, Member, Recommendation, Vote, VotingClosure
+from .services import (
+    archive_recommendation,
+    get_app_settings,
+    get_genres,
+    list_recommendations_with_votes,
+    manual_voting_closed_until,
+    scheduled_voting_window,
+    send_confirmation,
+    voting_window,
+)
 
 
 app = FastAPI(title="Book Club")
@@ -111,6 +120,11 @@ def _clean(value: str, maximum: int) -> str:
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
     window = voting_window(db=db)
+    manually_closed_until = manual_voting_closed_until(db)
+    voting_first_start = get_app_settings(db).voting_first_start
+    if voting_first_start.tzinfo is None:
+        voting_first_start = voting_first_start.replace(tzinfo=timezone.utc)
+    voting_first_start = voting_first_start.astimezone(timezone.utc)
     member = _current_member(request, db)
     current_vote = None
     own_recommendation = None
@@ -127,6 +141,8 @@ def home(request: Request, db: Session = Depends(get_db)):
         db,
         entries=list_recommendations_with_votes(db),
         vote_window=window,
+        manually_closed_until=manually_closed_until,
+        voting_first_start=voting_first_start,
         current_vote=current_vote,
         own_recommendation=own_recommendation,
     )
@@ -337,6 +353,9 @@ def history(request: Request, db: Session = Depends(get_db)):
 def admin_page(request: Request, db: Session = Depends(get_db)):
     _require_admin(request, db)
     config = get_app_settings(db)
+    now = datetime.now(timezone.utc)
+    scheduled_window = scheduled_voting_window(now=now, db=db)
+    closed_until = manual_voting_closed_until(db, now)
     first_start = config.voting_first_start
     if first_start.tzinfo is None:
         first_start = first_start.replace(tzinfo=timezone.utc)
@@ -344,9 +363,16 @@ def admin_page(request: Request, db: Session = Depends(get_db)):
         request,
         "admin.html",
         db,
-        voting_first_start=first_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M"),
+        voting_first_start_utc=first_start.astimezone(timezone.utc).isoformat(),
         voting_period_days=config.voting_period_days,
         genre_text="\n".join(get_genres(db)),
+        scheduled_window=scheduled_window,
+        manually_closed_until=closed_until,
+        can_close_voting=bool(
+            scheduled_window
+            and scheduled_window[0] <= now < scheduled_window[1]
+            and closed_until is None
+        ),
     )
 
 
@@ -390,8 +416,33 @@ def update_admin_settings(
     config = get_app_settings(db)
     config.voting_first_start = first_start
     config.voting_period_days = voting_period_days
+    db.execute(delete(VotingClosure))
     db.execute(delete(Genre))
     db.flush()
     db.add_all(Genre(name=name, position=index) for index, name in enumerate(genre_names))
     db.commit()
     return _flash_redirect(request, "Voting schedule and genres saved.", "/admin")
+
+
+@app.post("/admin/voting/close")
+def close_voting_now(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf_token)
+    _require_admin(request, db)
+    now = datetime.now(timezone.utc)
+    if manual_voting_closed_until(db, now):
+        return _flash_redirect(request, "Voting is already closed for this period.", "/admin")
+    window = scheduled_voting_window(now=now, db=db)
+    if window is None or not (window[0] <= now < window[1]):
+        return _flash_redirect(request, "There is no scheduled voting period open to close.", "/admin")
+    closure = db.get(VotingClosure, 1)
+    if closure is None:
+        closure = VotingClosure(id=1, closed_until=window[1])
+        db.add(closure)
+    else:
+        closure.closed_until = window[1]
+    db.commit()
+    return _flash_redirect(request, "Voting is now closed. It will reopen at the next scheduled period.", "/admin")

@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import DEFAULT_GENRES, settings
-from .models import AppSettings, EmailFailure, Genre, Recommendation, Vote
+from .models import AppSettings, EmailFailure, Genre, Recommendation, Vote, VotingClosure
 
 
 def get_app_settings(db: Session) -> AppSettings:
@@ -33,8 +33,10 @@ def get_genres(db: Session) -> list[str]:
     return [genre.name for genre in genres]
 
 
-def voting_window(now: datetime | None = None, db: Session | None = None) -> tuple[datetime, datetime] | None:
-    """Return the current UTC voting window, or None before the first opening."""
+def scheduled_voting_window(
+    now: datetime | None = None, db: Session | None = None
+) -> tuple[datetime, datetime] | None:
+    """Return the schedule-defined UTC window, regardless of manual closure."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -54,6 +56,29 @@ def voting_window(now: datetime | None = None, db: Session | None = None) -> tup
     periods_elapsed = (now - first_start) // length
     start = first_start + periods_elapsed * length
     return start, start + length
+
+
+def manual_voting_closed_until(db: Session, now: datetime | None = None) -> datetime | None:
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    closure = db.get(VotingClosure, 1)
+    if closure is None:
+        return None
+    closed_until = closure.closed_until
+    if closed_until.tzinfo is None:
+        closed_until = closed_until.replace(tzinfo=timezone.utc)
+    return closed_until if now.astimezone(timezone.utc) < closed_until else None
+
+
+def voting_window(now: datetime | None = None, db: Session | None = None) -> tuple[datetime, datetime] | None:
+    """Return the current open voting window, or None before opening/while manually closed."""
+    window = scheduled_voting_window(now=now, db=db)
+    if window is None or db is None:
+        return window
+    if manual_voting_closed_until(db, now):
+        return None
+    return window
 
 
 def list_recommendations_with_votes(db: Session) -> list[dict]:

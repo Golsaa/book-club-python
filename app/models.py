@@ -89,3 +89,9 @@ class Genre(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
+
+
+class VotingClosure(Base):
+    __tablename__ = "voting_closures"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    closed_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

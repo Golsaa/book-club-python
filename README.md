@@ -5,7 +5,9 @@ A beginner-friendly, server-rendered book club app built with FastAPI, Jinja, SQ
 ## Current behavior
 
 - Google sign-in; first-time members complete their name and favorite genre.
-- Admins can manage the genre list and voting schedule from the admin page. Initial defaults are Fiction, Non-Fiction, Mystery, Sci-Fi, and Fantasy, with two-day voting periods.
+- Admins can manage the genre list and voting schedule from the admin page, and close an open voting period early. A manually closed period reopens at its scheduled end. Initial defaults are Fiction, Non-Fiction, Mystery, Sci-Fi, and Fantasy, with two-day voting periods.
+- Dates and times are shown in UTC and the viewer's browser-local time.
+- Admins enter the first voting start in their browser's local time; the app stores it as UTC.
 - Each member has one current recommendation. Replacing it archives the previous recommendation and its votes.
 - Archived recommendations and votes remain in the member's history and do not count in current totals.
 - Members may vote for their own recommendation, have only one active vote, and can change it during an open voting period.

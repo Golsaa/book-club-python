@@ -9,7 +9,7 @@
   <article class="history-card"><div><span class="genre-pill">{{ recommendation.genre }}</span><h3>{{ recommendation.title }}</h3><p>by {{ recommendation.author }}</p><p>{{ recommendation.description }}</p></div><span class="history-count">{{ total }} historical votes</span></article>
   {% else %}<p class="muted">No recommendations have been archived yet.</p>{% endfor %}
   <h2 class="history-subhead">Your past votes</h2>
-  {% for vote, recommendation in past_votes %}<p class="past-vote">{{ vote.cast_at.strftime('%Y-%m-%d %H:%M UTC') }} — {{ recommendation.title }} by {{ recommendation.author }}{% if recommendation.archived_at %} <span class="muted">(archived)</span>{% endif %}</p>
+  {% for vote, recommendation in past_votes %}<p class="past-vote"><time class="dual-time" datetime="{{ vote.cast_at.isoformat() }}{% if not vote.cast_at.tzinfo %}+00:00{% endif %}">{{ vote.cast_at.strftime('%Y-%m-%d %H:%M UTC') }}</time> — {{ recommendation.title }} by {{ recommendation.author }}{% if recommendation.archived_at %} <span class="muted">(archived)</span>{% endif %}</p>
   {% else %}<p class="muted">No past votes yet.</p>{% endfor %}
 </section>
 {% endblock %}

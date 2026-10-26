@@ -27,5 +27,62 @@
     {% block content %}{% endblock %}
   </main>
   <footer>One good book can start a great conversation.</footer>
+  <script>
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+    const localTimeFormatter = new Intl.DateTimeFormat(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+    });
+    document.querySelectorAll('time.dual-time').forEach(element => {
+      const instant = new Date(element.dateTime);
+      if (!Number.isNaN(instant.getTime())) {
+        const utcText = element.textContent.replace(/\s*UTC$/, '');
+        element.replaceChildren(`Local ${localTimeFormatter.format(instant)} (${userTimeZone}) `);
+        const utcDetail = document.createElement('span');
+        utcDetail.className = 'utc-detail';
+        utcDetail.textContent = `UTC ${utcText}`;
+        element.append(utcDetail);
+      }
+    });
+
+    const utcValueInput = document.querySelector('[data-utc-value]');
+    const localStartInput = document.querySelector('[data-local-start]');
+    const localPreview = document.querySelector('#voting-start-preview');
+    const timezoneNote = document.querySelector('#voting-timezone-note');
+    if (utcValueInput && localStartInput && localPreview) {
+      if (timezoneNote) {
+        timezoneNote.textContent = `Calendar uses ${userTimeZone}; the saved schedule uses UTC.`;
+      }
+      const pad = value => String(value).padStart(2, '0');
+      const updateLocalFromUtc = () => {
+        const instant = new Date(utcValueInput.value);
+        if (Number.isNaN(instant.getTime())) return;
+        localStartInput.value = `${instant.getFullYear()}-${pad(instant.getMonth() + 1)}-${pad(instant.getDate())}T${pad(instant.getHours())}:${pad(instant.getMinutes())}`;
+      };
+      const showUtcPreview = instant => {
+        localPreview.textContent = `Saved as UTC ${new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+        }).format(instant)}`;
+      };
+      const updateUtcFromLocal = () => {
+        if (!localStartInput.value) {
+          localPreview.textContent = '';
+          return;
+        }
+        const instant = new Date(localStartInput.value);
+        if (Number.isNaN(instant.getTime())) {
+          localPreview.textContent = '';
+          return;
+        }
+        utcValueInput.value = instant.toISOString();
+        showUtcPreview(instant);
+      };
+      updateLocalFromUtc();
+      const savedInstant = new Date(utcValueInput.value);
+      if (!Number.isNaN(savedInstant.getTime())) showUtcPreview(savedInstant);
+      localStartInput.addEventListener('input', updateUtcFromLocal);
+    }
+  </script>
 </body>
 </html>

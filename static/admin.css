@@ -9,3 +9,9 @@
 .admin-form textarea{max-width:100%;resize:vertical}
 .admin-help{margin:0;color:var(--muted);font-size:12px}
 .admin-form .button{justify-self:start}
+.admin-voting-control{margin-top:36px;padding:22px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.admin-voting-control h2{margin:0;font:500 22px 'Playfair Display',serif}
+.admin-voting-control p{color:#717a72;font-size:13px}
+.button-danger{background:#8a3e32}
+.button-danger:hover{background:#6f3027}
+.utc-detail{display:inline-block;margin-left:.35em;color:var(--muted);font-size:.88em;font-weight:400}
