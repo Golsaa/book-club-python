@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Admin settings — Book Club{% endblock %}
+{% block content %}
+<section class="section admin-page">
+  <span class="eyebrow">CLUB CONFIGURATION</span>
+  <h1>Admin settings</h1>
+  <p>Changes are saved to the database and take effect immediately. Voting times use UTC.</p>
+  <form action="/admin/settings" method="post" class="admin-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <fieldset>
+      <legend>Voting schedule</legend>
+      <label>First voting period starts (UTC)
+        <input type="datetime-local" name="voting_first_start" value="{{ voting_first_start }}" required>
+      </label>
+      <label>Period length (days)
+        <input type="number" name="voting_period_days" min="1" max="366" value="{{ voting_period_days }}" required>
+      </label>
+      <p class="admin-help">Periods repeat continuously from the start date. Each closes when the next period begins.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Recommendation and member genres</legend>
+      <label>One genre per line
+        <textarea name="genres" rows="7" maxlength="1500" required>{{ genre_text }}</textarea>
+      </label>
+      <p class="admin-help">Use 1–30 unique names, up to 40 characters each. Removing a genre leaves existing books and member profiles unchanged.</p>
+    </fieldset>
+    <button class="button" type="submit">Save settings <span aria-hidden="true">→</span></button>
+  </form>
+</section>
+{% endblock %}

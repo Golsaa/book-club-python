@@ -9,7 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-GENRES = ("Fiction", "Non-Fiction", "Mystery", "Sci-Fi", "Fantasy")
+DEFAULT_GENRES = tuple(
+    genre.strip()
+    for genre in os.getenv(
+        "DEFAULT_GENRES", "Fiction,Non-Fiction,Mystery,Sci-Fi,Fantasy"
+    ).split(",")
+    if genre.strip()
+)
 
 
 def _as_bool(value: str, default: bool = False) -> bool:
@@ -32,6 +38,7 @@ class Settings:
     smtp_use_tls: bool
     voting_first_start: datetime
     voting_period_days: int
+    admin_emails: tuple[str, ...]
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -58,6 +65,11 @@ class Settings:
             smtp_use_tls=_as_bool(os.getenv("SMTP_USE_TLS", "true"), True),
             voting_first_start=first_start,
             voting_period_days=max(1, int(os.getenv("VOTING_PERIOD_DAYS", "2"))),
+            admin_emails=tuple(
+                email.strip().lower()
+                for email in os.getenv("ADMIN_EMAILS", "").split(",")
+                if email.strip()
+            ),
         )
 
 

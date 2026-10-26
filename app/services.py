@@ -7,18 +7,48 @@ from email.message import EmailMessage
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .config import settings
-from .models import EmailFailure, Recommendation, Vote
+from .config import DEFAULT_GENRES, settings
+from .models import AppSettings, EmailFailure, Genre, Recommendation, Vote
 
 
-def voting_window(now: datetime | None = None) -> tuple[datetime, datetime] | None:
+def get_app_settings(db: Session) -> AppSettings:
+    config = db.get(AppSettings, 1)
+    if config is None:
+        config = AppSettings(
+            id=1,
+            voting_first_start=settings.voting_first_start,
+            voting_period_days=settings.voting_period_days,
+        )
+        db.add(config)
+        db.flush()
+    return config
+
+
+def get_genres(db: Session) -> list[str]:
+    genres = db.scalars(select(Genre).order_by(Genre.position)).all()
+    if not genres:
+        genres = [Genre(name=name, position=index) for index, name in enumerate(DEFAULT_GENRES)]
+        db.add_all(genres)
+        db.flush()
+    return [genre.name for genre in genres]
+
+
+def voting_window(now: datetime | None = None, db: Session | None = None) -> tuple[datetime, datetime] | None:
     """Return the current UTC voting window, or None before the first opening."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
     now = now.astimezone(timezone.utc)
-    first_start = settings.voting_first_start
-    length = timedelta(days=settings.voting_period_days)
+    if db is None:
+        first_start = settings.voting_first_start
+        period_days = settings.voting_period_days
+    else:
+        config = get_app_settings(db)
+        first_start = config.voting_first_start
+        if first_start.tzinfo is None:
+            first_start = first_start.replace(tzinfo=timezone.utc)
+        period_days = config.voting_period_days
+    length = timedelta(days=period_days)
     if now < first_start:
         return None
     periods_elapsed = (now - first_start) // length

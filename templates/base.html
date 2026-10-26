@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Book Club{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='/styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='/admin.css') }}">
 </head>
 <body>
   <header class="topbar">
@@ -12,6 +13,7 @@
     <nav aria-label="Main navigation">
       <a href="/#recommendations">Recommendations</a>
       {% if member %}<a href="/history">My history</a>{% endif %}
+      {% if is_admin %}<a href="/admin">Admin</a>{% endif %}
       {% if member %}
       <form action="/auth/logout" method="post" class="nav-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

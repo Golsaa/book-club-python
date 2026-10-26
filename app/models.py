@@ -75,3 +75,17 @@ class EmailFailure(Base):
     action: Mapped[str] = mapped_column(String(40), nullable=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     error_summary: Mapped[str] = mapped_column(String(500), nullable=False)
+
+
+class AppSettings(Base):
+    __tablename__ = "app_settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    voting_first_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    voting_period_days: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class Genre(Base):
+    __tablename__ = "genres"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
