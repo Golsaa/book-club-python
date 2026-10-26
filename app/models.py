@@ -95,3 +95,19 @@ class VotingClosure(Base):
     __tablename__ = "voting_closures"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     closed_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class VotingRound(Base):
+    __tablename__ = "voting_rounds"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, unique=True)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    selected_recommendation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("recommendations.id", ondelete="SET NULL")
+    )
+    selected_title: Mapped[str | None] = mapped_column(String(200))
+    selected_author: Mapped[str | None] = mapped_column(String(160))
+    selected_genre: Mapped[str | None] = mapped_column(String(40))
+    selected_description: Mapped[str | None] = mapped_column(Text)
+    vote_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

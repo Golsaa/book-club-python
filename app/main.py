@@ -16,13 +16,15 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings
 from .database import Base, SessionLocal, engine, get_db
-from .models import EmailFailure, Genre, Member, Recommendation, Vote, VotingClosure
+from .models import EmailFailure, Genre, Member, Recommendation, Vote, VotingClosure, VotingRound
 from .services import (
     archive_recommendation,
+    close_voting_round,
     get_app_settings,
     get_genres,
     list_recommendations_with_votes,
     manual_voting_closed_until,
+    process_closed_voting_periods,
     scheduled_voting_window,
     send_confirmation,
     voting_window,
@@ -119,6 +121,7 @@ def _clean(value: str, maximum: int) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
+    process_closed_voting_periods(db)
     window = voting_window(db=db)
     manually_closed_until = manual_voting_closed_until(db)
     voting_first_start = get_app_settings(db).voting_first_start
@@ -286,6 +289,7 @@ def cast_vote(
     member = _current_member(request, db)
     if not member:
         return _flash_redirect(request, "Please sign in before voting.")
+    process_closed_voting_periods(db)
     window = voting_window(db=db)
     if window is None or not (window[0] <= datetime.now(timezone.utc) < window[1]):
         return _flash_redirect(request, "Voting is currently closed.")
@@ -313,6 +317,7 @@ def cast_vote(
 
 @app.get("/api/results")
 def results_api(db: Session = Depends(get_db)):
+    process_closed_voting_periods(db)
     return JSONResponse(
         [
             {
@@ -333,6 +338,7 @@ def history(request: Request, db: Session = Depends(get_db)):
     member = _current_member(request, db)
     if not member:
         return _flash_redirect(request, "Sign in to view history.")
+    process_closed_voting_periods(db)
     archived = db.execute(
         select(Recommendation, func.count(Vote.id))
         .outerjoin(Vote, Vote.recommendation_id == Recommendation.id)
@@ -352,6 +358,7 @@ def history(request: Request, db: Session = Depends(get_db)):
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request, db: Session = Depends(get_db)):
     _require_admin(request, db)
+    process_closed_voting_periods(db)
     config = get_app_settings(db)
     now = datetime.now(timezone.utc)
     scheduled_window = scheduled_voting_window(now=now, db=db)
@@ -387,6 +394,7 @@ def update_admin_settings(
 ):
     _check_csrf(request, csrf_token)
     _require_admin(request, db)
+    process_closed_voting_periods(db)
 
     try:
         first_start = datetime.fromisoformat(voting_first_start)
@@ -432,6 +440,7 @@ def close_voting_now(
 ):
     _check_csrf(request, csrf_token)
     _require_admin(request, db)
+    process_closed_voting_periods(db)
     now = datetime.now(timezone.utc)
     if manual_voting_closed_until(db, now):
         return _flash_redirect(request, "Voting is already closed for this period.", "/admin")
@@ -444,5 +453,17 @@ def close_voting_now(
         db.add(closure)
     else:
         closure.closed_until = window[1]
+    close_voting_round(db, window[0], window[1], now)
     db.commit()
     return _flash_redirect(request, "Voting is now closed. It will reopen at the next scheduled period.", "/admin")
+
+
+@app.get("/selected-books", response_class=HTMLResponse)
+def selected_books(request: Request, db: Session = Depends(get_db)):
+    process_closed_voting_periods(db)
+    selections = db.scalars(
+        select(VotingRound)
+        .where(VotingRound.selected_title.is_not(None))
+        .order_by(VotingRound.closed_at.desc(), VotingRound.id.desc())
+    ).all()
+    return _page(request, "selected.html", db, selections=selections)

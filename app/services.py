@@ -4,11 +4,11 @@ import smtplib
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from .config import DEFAULT_GENRES, settings
-from .models import AppSettings, EmailFailure, Genre, Recommendation, Vote, VotingClosure
+from .models import AppSettings, EmailFailure, Genre, Recommendation, Vote, VotingClosure, VotingRound
 
 
 def get_app_settings(db: Session) -> AppSettings:
@@ -79,6 +79,83 @@ def voting_window(now: datetime | None = None, db: Session | None = None) -> tup
     if manual_voting_closed_until(db, now):
         return None
     return window
+
+
+def close_voting_round(
+    db: Session,
+    period_start: datetime,
+    period_end: datetime,
+    closed_at: datetime,
+) -> VotingRound:
+    """Snapshot the leading recommendation, then clear active votes for the next round."""
+    existing = db.scalar(select(VotingRound).where(VotingRound.period_start == period_start))
+    if existing:
+        return existing
+
+    result = VotingRound(
+        period_start=period_start,
+        period_end=period_end,
+        closed_at=closed_at,
+        vote_count=0,
+    )
+    leaders = list_recommendations_with_votes(db)
+    if leaders and leaders[0]["vote_count"] > 0:
+        winner = leaders[0]["recommendation"]
+        result.selected_recommendation_id = winner.id
+        result.selected_title = winner.title
+        result.selected_author = winner.author
+        result.selected_genre = winner.genre
+        result.selected_description = winner.description
+        result.vote_count = leaders[0]["vote_count"]
+    db.add(result)
+    db.flush()
+    if result.selected_recommendation_id is not None:
+        winner = db.get(Recommendation, result.selected_recommendation_id)
+        if winner is not None:
+            archive_recommendation(db, winner, closed_at)
+    db.execute(Vote.__table__.update().where(Vote.is_active.is_(True)).values(is_active=False))
+    return result
+
+
+def process_closed_voting_periods(db: Session, now: datetime | None = None) -> None:
+    """Finalize elapsed periods and remove their selected recommendations immediately."""
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    now = now.astimezone(timezone.utc)
+
+    changed = False
+    config = get_app_settings(db)
+    first_start = config.voting_first_start
+    if first_start.tzinfo is None:
+        first_start = first_start.replace(tzinfo=timezone.utc)
+    first_start = first_start.astimezone(timezone.utc)
+    if now < first_start:
+        if changed:
+            db.commit()
+        return
+
+    period_length = timedelta(days=config.voting_period_days)
+    completed_periods = int((now - first_start) // period_length)
+    start = first_start
+    for _ in range(completed_periods):
+        end = start + period_length
+        result = db.scalar(select(VotingRound).where(VotingRound.period_start == start))
+        if result is None:
+            result = close_voting_round(db, start, end, end)
+            changed = True
+        start = end
+
+    closure = db.get(VotingClosure, 1)
+    if closure is not None:
+        closed_until = closure.closed_until
+        if closed_until.tzinfo is None:
+            closed_until = closed_until.replace(tzinfo=timezone.utc)
+        if closed_until <= now:
+            db.execute(delete(VotingClosure).where(VotingClosure.id == 1))
+            changed = True
+    if changed:
+        db.commit()
 
 
 def list_recommendations_with_votes(db: Session) -> list[dict]:
