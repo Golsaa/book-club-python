@@ -18,9 +18,11 @@
     <span class="live-label"><i></i> Updates every 10 seconds</span>
   </div>
   {% if vote_window %}
-    <div class="voting-status open"><strong>Voting is open</strong><span>Closes {{ vote_window[1].strftime('%b %d, %Y at %H:%M UTC') }}</span></div>
+    <div class="voting-status open"><strong>Voting is open</strong><span>Closes <time class="dual-time" datetime="{{ vote_window[1].isoformat() }}">{{ vote_window[1].strftime('%b %d, %Y at %H:%M UTC') }}</time></span></div>
+  {% elif manually_closed_until %}
+    <div class="voting-status"><strong>Voting was closed by an admin</strong><span>Next voting period begins <time class="dual-time" datetime="{{ manually_closed_until.isoformat() }}">{{ manually_closed_until.strftime('%b %d, %Y at %H:%M UTC') }}</time></span></div>
   {% else %}
-    <div class="voting-status"><strong>Voting has not opened yet</strong><span>First round begins October 25, 2026 at 00:00 UTC.</span></div>
+    <div class="voting-status"><strong>Voting has not opened yet</strong><span>First round begins <time class="dual-time" datetime="{{ voting_first_start.isoformat() }}">{{ voting_first_start.strftime('%b %d, %Y at %H:%M UTC') }}</time></span></div>
   {% endif %}
 
     <div id="results" class="book-list" aria-live="polite"

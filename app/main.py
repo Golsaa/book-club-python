@@ -9,15 +9,24 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from .config import GENRES, settings
-from .database import Base, engine, get_db
-from .models import EmailFailure, Member, Recommendation, Vote
-from .services import archive_recommendation, list_recommendations_with_votes, send_confirmation, voting_window
+from .config import settings
+from .database import Base, SessionLocal, engine, get_db
+from .models import EmailFailure, Genre, Member, Recommendation, Vote, VotingClosure
+from .services import (
+    archive_recommendation,
+    get_app_settings,
+    get_genres,
+    list_recommendations_with_votes,
+    manual_voting_closed_until,
+    scheduled_voting_window,
+    send_confirmation,
+    voting_window,
+)
 
 
 app = FastAPI(title="Book Club")
@@ -44,6 +53,10 @@ oauth.register(
 @app.on_event("startup")
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        get_app_settings(db)
+        get_genres(db)
+        db.commit()
 
 
 def _csrf(request: Request) -> str:
@@ -73,7 +86,8 @@ def _page(request: Request, name: str, db: Session, **context) -> HTMLResponse:
         context={
             "member": member,
             "csrf_token": _csrf(request),
-            "genres": GENRES,
+            "genres": get_genres(db),
+            "is_admin": bool(member and member.email.lower() in settings.admin_emails),
             "flash": request.session.pop("flash", None),
             **context,
         },
@@ -92,13 +106,25 @@ def _require_member(request: Request, db: Session) -> Member:
     return member
 
 
+def _require_admin(request: Request, db: Session) -> Member:
+    member = _require_member(request, db)
+    if member.email.lower() not in settings.admin_emails:
+        raise HTTPException(status_code=403, detail="Admin access is required.")
+    return member
+
+
 def _clean(value: str, maximum: int) -> str:
     return " ".join(value.strip().split())[:maximum]
 
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request, db: Session = Depends(get_db)):
-    window = voting_window()
+    window = voting_window(db=db)
+    manually_closed_until = manual_voting_closed_until(db)
+    voting_first_start = get_app_settings(db).voting_first_start
+    if voting_first_start.tzinfo is None:
+        voting_first_start = voting_first_start.replace(tzinfo=timezone.utc)
+    voting_first_start = voting_first_start.astimezone(timezone.utc)
     member = _current_member(request, db)
     current_vote = None
     own_recommendation = None
@@ -115,6 +141,8 @@ def home(request: Request, db: Session = Depends(get_db)):
         db,
         entries=list_recommendations_with_votes(db),
         vote_window=window,
+        manually_closed_until=manually_closed_until,
+        voting_first_start=voting_first_start,
         current_vote=current_vote,
         own_recommendation=own_recommendation,
     )
@@ -176,7 +204,7 @@ def register(
     if not pending:
         return _flash_redirect(request, "Your sign-in expired. Please sign in again.")
     name = _clean(name, 120)
-    if not name or favorite_genre not in GENRES:
+    if not name or favorite_genre not in get_genres(db):
         return _page(request, "register.html", db, pending=pending, error="Enter a name and choose a listed favorite genre.")
     member = Member(
         name=name,
@@ -222,7 +250,7 @@ def save_recommendation(
         return _flash_redirect(request, "Please sign in before recommending a book.")
     title, author = _clean(title, 200), _clean(author, 160)
     description = description.strip()
-    if not title or not author or not description or len(description) > 2000 or genre not in GENRES:
+    if not title or not author or not description or len(description) > 2000 or genre not in get_genres(db):
         return _flash_redirect(request, "Complete every field, use a listed genre, and keep the description under 2,000 characters.")
     try:
         previous = db.scalar(
@@ -258,7 +286,7 @@ def cast_vote(
     member = _current_member(request, db)
     if not member:
         return _flash_redirect(request, "Please sign in before voting.")
-    window = voting_window()
+    window = voting_window(db=db)
     if window is None or not (window[0] <= datetime.now(timezone.utc) < window[1]):
         return _flash_redirect(request, "Voting is currently closed.")
     recommendation = db.get(Recommendation, recommendation_id)
@@ -319,3 +347,102 @@ def history(request: Request, db: Session = Depends(get_db)):
         .order_by(Vote.cast_at.desc())
     ).all()
     return _page(request, "history.html", db, archived=archived, past_votes=past_votes)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page(request: Request, db: Session = Depends(get_db)):
+    _require_admin(request, db)
+    config = get_app_settings(db)
+    now = datetime.now(timezone.utc)
+    scheduled_window = scheduled_voting_window(now=now, db=db)
+    closed_until = manual_voting_closed_until(db, now)
+    first_start = config.voting_first_start
+    if first_start.tzinfo is None:
+        first_start = first_start.replace(tzinfo=timezone.utc)
+    return _page(
+        request,
+        "admin.html",
+        db,
+        voting_first_start_utc=first_start.astimezone(timezone.utc).isoformat(),
+        voting_period_days=config.voting_period_days,
+        genre_text="\n".join(get_genres(db)),
+        scheduled_window=scheduled_window,
+        manually_closed_until=closed_until,
+        can_close_voting=bool(
+            scheduled_window
+            and scheduled_window[0] <= now < scheduled_window[1]
+            and closed_until is None
+        ),
+    )
+
+
+@app.post("/admin/settings")
+def update_admin_settings(
+    request: Request,
+    voting_first_start: str = Form(...),
+    voting_period_days: int = Form(...),
+    genres: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf_token)
+    _require_admin(request, db)
+
+    try:
+        first_start = datetime.fromisoformat(voting_first_start)
+        if first_start.tzinfo is None:
+            first_start = first_start.replace(tzinfo=timezone.utc)
+        first_start = first_start.astimezone(timezone.utc)
+    except ValueError:
+        return _flash_redirect(request, "Enter a valid voting start date and time in UTC.", "/admin")
+
+    genre_names = [" ".join(line.split()) for line in genres.splitlines()]
+    genre_names = [name for name in genre_names if name]
+    folded_names = [name.casefold() for name in genre_names]
+    if not 1 <= voting_period_days <= 366:
+        return _flash_redirect(request, "Voting periods must be between 1 and 366 days.", "/admin")
+    if (
+        not genre_names
+        or len(genre_names) > 30
+        or any(len(name) > 40 for name in genre_names)
+        or len(set(folded_names)) != len(folded_names)
+    ):
+        return _flash_redirect(
+            request,
+            "Enter 1–30 unique genre names, with each name no longer than 40 characters.",
+            "/admin",
+        )
+
+    config = get_app_settings(db)
+    config.voting_first_start = first_start
+    config.voting_period_days = voting_period_days
+    db.execute(delete(VotingClosure))
+    db.execute(delete(Genre))
+    db.flush()
+    db.add_all(Genre(name=name, position=index) for index, name in enumerate(genre_names))
+    db.commit()
+    return _flash_redirect(request, "Voting schedule and genres saved.", "/admin")
+
+
+@app.post("/admin/voting/close")
+def close_voting_now(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    _check_csrf(request, csrf_token)
+    _require_admin(request, db)
+    now = datetime.now(timezone.utc)
+    if manual_voting_closed_until(db, now):
+        return _flash_redirect(request, "Voting is already closed for this period.", "/admin")
+    window = scheduled_voting_window(now=now, db=db)
+    if window is None or not (window[0] <= now < window[1]):
+        return _flash_redirect(request, "There is no scheduled voting period open to close.", "/admin")
+    closure = db.get(VotingClosure, 1)
+    if closure is None:
+        closure = VotingClosure(id=1, closed_until=window[1])
+        db.add(closure)
+    else:
+        closure.closed_until = window[1]
+    db.commit()
+    return _flash_redirect(request, "Voting is now closed. It will reopen at the next scheduled period.", "/admin")

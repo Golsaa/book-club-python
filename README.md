@@ -5,7 +5,9 @@ A beginner-friendly, server-rendered book club app built with FastAPI, Jinja, SQ
 ## Current behavior
 
 - Google sign-in; first-time members complete their name and favorite genre.
-- The fixed genre list is Fiction, Non-Fiction, Mystery, Sci-Fi, and Fantasy.
+- Admins can manage the genre list and voting schedule from the admin page, and close an open voting period early. A manually closed period reopens at its scheduled end. Initial defaults are Fiction, Non-Fiction, Mystery, Sci-Fi, and Fantasy, with two-day voting periods.
+- Dates and times are shown in UTC and the viewer's browser-local time.
+- Admins enter the first voting start in their browser's local time; the app stores it as UTC.
 - Each member has one current recommendation. Replacing it archives the previous recommendation and its votes.
 - Archived recommendations and votes remain in the member's history and do not count in current totals.
 - Members may vote for their own recommendation, have only one active vote, and can change it during an open voting period.
@@ -46,6 +48,8 @@ Copy-Item .env.example .env
 ```
 
 At minimum, change `SESSION_SECRET` in `.env` to a long random value. Keep `.env` private; it is excluded from Git. Leave `COOKIE_SECURE=false` for local HTTP development. Use `true` only when the site is served over HTTPS.
+
+Set `ADMIN_EMAILS` to the comma-separated Google email addresses that should have admin access. Sign in and complete member registration with one of those addresses; the **Admin** link will then appear. The admin page saves voting dates and genres in the database. `VOTING_FIRST_START`, `VOTING_PERIOD_DAYS`, and `DEFAULT_GENRES` provide initial values when the database is created.
 
 ### 3. Configure Google sign-in (optional for initial startup)
 
@@ -97,6 +101,5 @@ Tests cover the voting schedule boundaries, vote-count ordering, archived-vote b
 
 ## Later improvements (not needed for the first version)
 
-- Admin pages for voting dates and genres.
 - Email resend or automated retry tools.
 - Additional sign-in providers, live updates via WebSockets, and a PostgreSQL deployment.
