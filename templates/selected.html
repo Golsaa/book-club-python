@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Past club picks — Book Club{% endblock %}
+{% block content %}
+<section class="section selected-page">
+  <span class="eyebrow">THE CLUB’S READING HISTORY</span>
+  <h1>Selected books</h1>
+  <p>Books selected at the close of each voting period, with their closing vote totals.</p>
+  <div class="selected-list">
+    {% for selection in selections %}
+    <article class="selected-card">
+      <div class="selected-date">
+        <span class="eyebrow">VOTING CLOSED</span>
+        <time class="dual-time" datetime="{{ selection.closed_at.isoformat() }}{% if not selection.closed_at.tzinfo %}+00:00{% endif %}">{{ selection.closed_at.strftime('%b %d, %Y at %H:%M UTC') }}</time>
+      </div>
+      <div>
+        <span class="genre-pill">{{ selection.selected_genre }}</span>
+        <h2>{{ selection.selected_title }}</h2>
+        <p class="author">by {{ selection.selected_author }}</p>
+        <p class="description">{{ selection.selected_description }}</p>
+      </div>
+      <span class="history-count">{{ selection.vote_count }} votes</span>
+    </article>
+    {% else %}
+    <div class="empty-state"><span>✧</span><h3>No books have been selected yet</h3><p>The winning book will appear here when a voting period closes.</p></div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
